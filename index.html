@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="utf-8" />
+	<title>Matrix 10</title>
+</head>
+<!--<body onload = create()>-->
+<body>
+	<button onclick="startNeuralNetwork()">Start</button>
+	<br>
+	<button onclick="pauseNeuralNetwork()">Pause</button>
+	<br>
+	<div id="epochs"></div>
+	<br>
+	<div id="io"></div>
+	<br>
+	<div id="log"></div>
+	<script>
+	"use strict";
+	
+	var timeIntervalID = null;
+	var trainNeurons = [];
+	var neurons = null;
+	var epochs = 0;
+	
+	// ****************************************************************************************
+	// ************* This is an ANN in HTML that uses vectors instead of matrices *************
+	// ****************************************************************************************
+	
+	function startNeuralNetwork()
+	{
+		if (neurons === null)
+		{
+			// The plain relu() activation function seems to work best
+			// especially since it cannot create negative numbers
+			// 1)Input Layer, 2)Hidden Layer, 3)Output Layer, 4)The Learning Step, 5)The Precision to Reach
+			neurons = new NeuralNetwork(2, [16], 2, 0.01, 0.001);
+			
+			/*trainNeurons =
+			[
+				[0, 0], [0],
+				[0, 1], [1],
+			 	[1, 0], [1],
+			 	[1, 1], [0]
+			];*/
+
+			trainNeurons =
+			[
+				[0, 0], [0, 0],
+				[0, 1], [1, 1],
+			 	[1, 0], [1, 1],
+			 	[1, 1], [0, 0]
+			];
+		}
+		
+		if (timeIntervalID === null)
+		{
+			if (neurons.input !== trainNeurons[0].length
+				|| neurons.output !== trainNeurons[1].length)
+			{
+				alert("Error incorrect Neural Network inputs or outputs.");
+				return;
+			}
+			
+			timeIntervalID = setInterval(function()
+			{
+				let errorOutput = [];
+				let errorRate = 0;
+				let output = [];
+				let index = 0;
+				
+				for (let j = 0; j < trainNeurons.length; j+=2)
+				{
+					output[index] = neurons.train(trainNeurons[j], trainNeurons[j+1]);
+					index++;
+				}
+						 
+				epochs++;
+				
+				// Convert the values to arrays
+				for (let i = 0; i < output.length; i++)
+				{
+					output[i].error = [];
+					output[i].prediction = [];
+					
+					for (let j = 0; j < output[i].errorValues.length; j++)
+					{
+						output[i].error.push(output[i].errorValues[j].value);
+					}
+					
+					for (let j = 0; j < output[i].predictionValues.length; j++)
+					{
+						output[i].prediction.push(output[i].predictionValues[j].value);
+					}
+				}
+				
+				// Retrieve the error rate from the output
+				for (let i = 0; i < output.length; i++)
+				{
+					let outputErrorRate = output[i].error;
+		 
+					// If there are multiple outputs then there will be mulitple output error rates
+					for (let j = 0; j < outputErrorRate.length; j++)
+					{
+						errorOutput.push(outputErrorRate[j]);
+					}
+				}
+		 
+				// Root Mean Squared Error = sqrt((a^2 + b^2 ...) / length);
+				for (let i = 0; i < errorOutput.length; i++)
+				{
+					errorRate += errorOutput[i] * errorOutput[i];
+				}
+		 
+		 		errorRate = Math.sqrt(errorRate / errorOutput.length);
+		 
+				document.getElementById("epochs").innerHTML = "Epochs: " + epochs + "<br>Error Rate: " + errorRate;
+		 
+				let epochio = "";
+		 
+				for (let i = 0; i < output.length; i++)
+				{
+					epochio += "Input: " + output[i].input + " Output: " + output[i].output +  " New Output: " + output[i].prediction + "<br>";
+				}
+		 
+				// This is a quick way to use new input values to get a new output from the neural network.
+				//epochio += "<br>Input: 1,1 Output:" + neurons.predict([1,1]);
+		 
+				document.getElementById("io").innerHTML = epochio;
+				
+				if (errorRate < neurons.errorRate)
+				{
+					pauseNeuralNetwork();
+				}
+			}, 0);
+		}
+	}
+
+	function pauseNeuralNetwork()
+	{
+		if (timeIntervalID !== null)
+		{
+			clearInterval(timeIntervalID);
+		}
+		
+		timeIntervalID = null;
+	}
+
+	function NeuralNetwork(input, hiddens, output, learningRate, errorRate)
+	{
+		this.input = input;
+		this.hiddens = hiddens;
+		this.output = output;
+		// This is for how quickly a neural network finds the output
+		this.learningRate = learningRate;
+		// If the neural network reaches the errorRate below it stops running
+		this.errorRate = errorRate;
+		this.neuralNetwork = {};
+		let previousLayer = 0;
+		let layers = [];
+		
+		// This creates empty layers until it is trained
+		layers.push(createLayer(input, previousLayer));
+		previousLayer = input;
+		
+		for (let i = 0; i < hiddens.length; i++)
+		{
+			layers.push(createLayer(hiddens[i], previousLayer));
+			previousLayer = hiddens[i];
+		}
+		
+		layers.push(createLayer(output, previousLayer));
+		
+		this.neuralNetwork.layers = layers;
+	}
+	
+	NeuralNetwork.prototype.predict = function(inputs)
+	{
+		for (let i = 0; i < inputs.length; i++)
+		{
+			this.neuralNetwork.layers[0].neurons[i].value = inputs[i];
+		}
+	 
+		// value
+		let inputLayer = this.neuralNetwork.layers[0].neurons;
+		// value = value, weights
+		let hiddenLayer = multiplyNeurons(inputLayer, this.neuralNetwork.layers[1].neurons);
+		// value = value, weights
+		let outputLayer = multiplyNeurons(hiddenLayer, this.neuralNetwork.layers[2].neurons);
+
+		return outputLayer;
+	}
+	
+	NeuralNetwork.prototype.train = function(inputs, outputs)
+	{
+	// Feed Forward
+		for (let i = 0; i < inputs.length; i++)
+		{
+			this.neuralNetwork.layers[0].neurons[i].value = inputs[i];
+		}
+		// value
+		let inputLayer = this.neuralNetwork.layers[0].neurons;
+		// value = value, weights
+		let hiddenLayer = multiplyNeurons(this.neuralNetwork.layers[1].neurons, inputLayer);
+		// value = value, weights
+		let outputLayer = multiplyNeurons(this.neuralNetwork.layers[2].neurons, hiddenLayer);
+		
+	// Back Propagate
+		let outputErrors = [];
+		
+		for (let i = 0; i < outputLayer.length; i++)
+		{
+			outputErrors.push({value:outputs[i] - outputLayer[i].value, weights:null});
+		}
+		
+		let outputGradient = gradientNeurons(outputLayer, outputErrors, this.learningRate);
+		// outputDelta is used for the neuron weights
+		let outputDelta = deltaNeurons(this.neuralNetwork.layers[2].neurons, outputGradient, hiddenLayer);
+		// Send the new weights to the neural network
+		this.neuralNetwork.layers[2].neurons = outputDelta;
+
+		let hiddenErrors = errorNeurons(outputDelta, outputErrors);
+		
+		let hiddenGradient = gradientNeurons(hiddenLayer, hiddenErrors, this.learningRate);
+		// hiddenDelta is used for the neuron weights
+		let hiddenDelta = deltaNeurons(this.neuralNetwork.layers[1].neurons, hiddenGradient, inputLayer);
+		// Send the new weights to the neural network
+		this.neuralNetwork.layers[1].neurons = hiddenDelta;
+		
+		return {input:inputs, output:outputs, predictionValues:outputLayer, errorValues:outputErrors};
+	}
+
+	// neuronWeights = weights
+	// neuronGradient = value
+	// neuronLayer = value
+	// returns = weights
+	// This transposes the neuronLayer values then multiplies them into a weight
+	function deltaNeurons(neuronWeights, neuronGradient, neuronLayer)
+	{
+		let changeWeights = [];
+		
+		// Normally it would be rows->columns but the neuronLayer is being transposed
+		// Columns
+		for (let i = 0; i < neuronGradient.length; i++)
+		{
+			let weights = [];
+			
+			// Rows
+			for (let j = 0; j < neuronLayer.length; j++)
+			{
+				weights.push(neuronGradient[i].value * neuronLayer[j].value);
+			}
+			
+			changeWeights.push({value:null, weights:weights});
+		}
+		
+		let addedWeights = [];
+		
+		for (let i = 0; i < neuronWeights.length; i++)
+		{
+			let weights = [];
+			
+			for (let j = 0; j < neuronWeights[i].weights.length; j++)
+			{
+				weights.push(neuronWeights[i].weights[j] + changeWeights[i].weights[j]);
+			}
+			
+			addedWeights.push({value:null, weights:weights});
+		}
+		
+		return addedWeights;
+	}
+
+	// neuronLayer = value
+	// neuronErrors = value
+	// return = value
+	function gradientNeurons(neuronLayer, neuronErrors, learningRate)
+	{
+		let neuronGradient = [];
+		
+		for (let i = 0; i < neuronLayer.length; i++)
+		{
+			let gradient = reluDerivative(neuronLayer[i].value);
+			//let gradient = leakyReluDerivative(neuronLayer[i].value);
+			//let gradient = sigmoidDerivative(neuronLayer[i].value);
+			//let gradient = neuronLayer[i].value;
+			gradient *= neuronErrors[i].value;
+			gradient *= learningRate;
+			
+			neuronGradient.push({value:gradient, weights:null});
+		}
+		
+		return neuronGradient;
+	}
+
+	// neuronWeights = weights
+	// neuronErrors = values
+	// returns = values
+	function errorNeurons(neuronWeights, neuronErrors)
+	{
+		let errorTranspose = [];
+		
+		// Transpose the weights
+		// Columns
+		for (let i = 0; i < neuronWeights[0].weights.length; i++)
+		{
+			let weights = [];
+			
+			// Rows
+			for (let j = 0; j < neuronWeights.length; j++)
+			{
+				weights.push(neuronWeights[j].weights[i]);
+			}
+			
+			errorTranspose.push({value:null, weights:weights});
+		}
+		
+		let errorValues = [];
+		
+		// rows first columns second
+		// This is for the current layer being used
+		for (let i = 0; i < errorTranspose.length; i++)
+		{
+			let weights = errorTranspose[i].weights;
+			let sum = 0;
+			
+			// This is for the previous layer being used
+			for (let j = 0; j < neuronErrors.length; j++)
+			{
+				sum += neuronErrors[j].value * weights[j];
+			}
+			
+			errorValues.push({value:sum, weights:null});
+		}
+		
+		return errorValues;
+	}
+
+	// This multiplies the weights and values for the neuron layers
+	// neuronWeights = weights
+	// neuronValues = value
+	// return = value
+	function multiplyNeurons(neuronWeights, neuronValues)
+	{
+		let neuronLayer = [];
+		
+		// rows first columns second
+		// This is for the current layer being used
+		for (let i = 0; i < neuronWeights.length; i++)
+		{
+			let weights = neuronWeights[i].weights;
+			let sum = 0;
+			
+			// This is for the previous layer being used
+			for (let j = 0; j < neuronValues.length; j++)
+			{
+				sum += neuronValues[j].value * weights[j];
+			}
+			
+			
+			neuronLayer.push({value:relu(sum), weights:null});
+			//neuronLayer.push({value:leakyRelu(sum), weights:null});
+			//neuronLayer.push({value:sigmoid(sum), weights:null});
+			//neuronLayer.push({value:sum, weights:null});
+		}
+		
+		return neuronLayer;
+	}
+
+	function createLayer(neurons, inputs)
+	{
+		let neuronArray = [];
+		
+		for (let i = 0; i < neurons; i++)
+		{
+			neuronArray.push(createNeuron(inputs));
+		}
+		
+		return {neurons:neuronArray};
+	}
+	
+	function createNeuron(inputs)
+	{
+		let weights = [];
+		
+		for (let i = 0; i < inputs; i++)
+		{
+			weights.push(randomInteger(-100, 100) / 100);
+		}
+		
+		// Value is the neuron and weights is the weights
+		return {value:0, weights:weights};
+	}
+
+	function randomInteger(min, max)
+	{
+  		return Math.floor(Math.random() * (max - min + 1)) + min;
+	}
+
+	// range of values is 0 to 1
+	// Sigmoid S(x) = 1 / (1 + Math.pow(Math.E, -x));
+	function sigmoid(layerSum)
+	{
+		// Both formulas below are the same.
+		//return 1 / (1 + Math.pow(Math.E, -layerSum));
+		return 1 / (1 + Math.exp(-layerSum));
+	}
+
+	// Below is a shortcut for the sigmoid derivative.
+	// Sigmoid Derivative SP(x) = S(x) * (1 - S(x));
+	function sigmoidDerivative(layerSum)
+	{
+		let sigmoidCurve = sigmoid(layerSum);
+		
+		return sigmoidCurve * (1 - sigmoidCurve);
+	}
+	
+	// This works better than the leakyReLU function
+	// range of values is 0 to +infinity
+	// ReLU (Rectified Linear Unit)
+	function relu(x)
+	{
+		return Math.max(x, 0);
+	}
+
+	// ReLU (Rectified Linear Unit) Derivative
+	function reluDerivative(x)
+	{
+		if (x < 0)
+		{
+			return 0;
+		}
+		else
+		{
+			return 1;
+		}
+	}
+	
+	// range of values is -infinity to +infinity
+	// This should be an improvement of the original relu function above
+	// Leaky ReLU (Rectified Linear Unit)
+	function leakyRelu(x)
+	{
+		if (x < 0)
+		{
+			return 0.01 * x;
+		}
+		else
+		{
+			return x;
+		}
+	}
+
+	// Leaky ReLU (Rectified Linear Unit) Derivative
+	function leakyReluDerivative(x)
+	{
+		if (x < 0)
+		{
+			return 0.01;
+		}
+		else
+		{
+			return 1;
+		}
+	}
+	</script>
+</body>
+</html>
